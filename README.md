@@ -1,3 +1,45 @@
+📦 HabZone – EDMC 6.x Compatibility Update
+
+Version: 1.20-edmc6
+Status: Stable
+Tested with: EDMarketConnector 6.1.1, Python 3.13
+
+🔧 Changes
+
+Updated Config API for EDMC 6.x
+
+config.getint() → config.get_int()
+
+Updated Locale API
+
+Locale.stringFromNumber() → Locale.string_from_number()
+
+Fixed silent failures during Scan events
+
+Added safe debug logging (print_exc() in debug mode)
+
+Improved robustness for missing journal fields
+
+No functional behavior changes to HabZone calculations
+
+✅ Result
+
+Plugin loads cleanly in EDMC 6.x
+
+Habitable Zone distances display correctly after scanning the arrival star
+
+Fully compatible with modern Python 3.x builds
+
+ℹ️ Notes
+
+This update is a maintenance / compatibility fix only
+
+Original functionality and UI layout are unchanged
+
+Safe drop-in replacement for the original HabZone-master/load.py
+
+----- Original - by Marginal -----
+
 # Habitable Zone plugin for [EDMC](https://github.com/Marginal/EDMarketConnector/wiki)
 
 This plugin helps explorers find high-value planets. It displays the "habitable-zone" (i.e. the range of distances in which you might find an Earth-Like World) when you scan the primary star in a system with a [Detailed Surface Scanner](http://elite-dangerous.wikia.com/wiki/Detailed_Surface_Scanner).
