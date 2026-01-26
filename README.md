@@ -1,11 +1,20 @@
-📦 HabZone – EDMC 6.x Compatibility Update
+# 📦 HabZone – [EDMC](https://github.com/EDCD/EDMarketConnector/wiki) 6.x Compatibility Update
+
+This plugin helps explorers find high-value planets. It displays the "habitable-zone" (i.e. the range of distances in which you might find an Earth-Like World) when you scan the primary star in a system with a [Detailed Surface Scanner](http://elite-dangerous.wikia.com/wiki/Detailed_Surface_Scanner).
 
 Version: 1.21-edmc6
 Status: Stable
 Tested with: EDMarketConnector 6.1.1, Python 3.13
 
+## Installation
 
-ℹ️ Notes
+* On EDMC's Plugins settings tab press the “Open” button. This reveals the `plugins` folder where EDMC looks for plugins.
+* Download the [latest release](https://github.com/R4m8o/HabZone-1.21-edmc6/releases/latest).
+* Open the `.zip` archive that you downloaded and move the `HabZone` folder contained inside into the `plugins` folder.
+
+You will need to re-start EDMC for it to notice the new plugin.
+
+# ℹ️ Notes
 
 This update is a maintenance / compatibility fix only
 
@@ -15,23 +24,11 @@ Safe drop-in replacement for the original HabZone-master/load.py
 
 ----- Original - by Marginal -----
 
-# Habitable Zone plugin for [EDMC](https://github.com/Marginal/EDMarketConnector/wiki)
-
-This plugin helps explorers find high-value planets. It displays the "habitable-zone" (i.e. the range of distances in which you might find an Earth-Like World) when you scan the primary star in a system with a [Detailed Surface Scanner](http://elite-dangerous.wikia.com/wiki/Detailed_Surface_Scanner).
-
 ![Screenshot](img/screenie.png)
 
 Optionally, you can choose to display the ranges in which you might find other high-value planets - Metal-Rich, Water and/or Ammonia Worlds.
 
 Optionally, you can choose to display the high-value planets known to [Elite Dangerous Star Map](https://www.edsm.net/).
-
-## Installation
-
-* On EDMC's Plugins settings tab press the “Open” button. This reveals the `plugins` folder where EDMC looks for plugins.
-* Download the [latest release](https://github.com/R4m8o/HabZone-1.21-edmc6/releases/latest).
-* Open the `.zip` archive that you downloaded and move the `HabZone` folder contained inside into the `plugins` folder.
-
-You will need to re-start EDMC for it to notice the new plugin.
 
 ## Acknowledgements
 
