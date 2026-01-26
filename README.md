@@ -4,31 +4,6 @@ Version: 1.21-edmc6
 Status: Stable
 Tested with: EDMarketConnector 6.1.1, Python 3.13
 
-🔧 Changes
-
-Updated Config API for EDMC 6.x
-
-config.getint() → config.get_int()
-
-Updated Locale API
-
-Locale.stringFromNumber() → Locale.string_from_number()
-
-Fixed silent failures during Scan events
-
-Added safe debug logging (print_exc() in debug mode)
-
-Improved robustness for missing journal fields
-
-No functional behavior changes to HabZone calculations
-
-✅ Result
-
-Plugin loads cleanly in EDMC 6.x
-
-Habitable Zone distances display correctly after scanning the arrival star
-
-Fully compatible with modern Python 3.x builds
 
 ℹ️ Notes
 
@@ -53,7 +28,7 @@ Optionally, you can choose to display the high-value planets known to [Elite Dan
 ## Installation
 
 * On EDMC's Plugins settings tab press the “Open” button. This reveals the `plugins` folder where EDMC looks for plugins.
-* Download the [latest release](https://github.com/Marginal/HabZone/releases/latest).
+* Download the [latest release](https://github.com/R4m8o/HabZone-1.21-edmc6/releases/latest).
 * Open the `.zip` archive that you downloaded and move the `HabZone` folder contained inside into the `plugins` folder.
 
 You will need to re-start EDMC for it to notice the new plugin.
