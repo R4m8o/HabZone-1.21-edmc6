@@ -30,7 +30,7 @@ from config import config
 from l10n import Locale
 
 # Bump: EDMC 6.x / Python 3.x compatibility
-VERSION = '1.21-edmc6'
+VERSION = '1.20-edmc6'
 
 SETTING_DEFAULT = 0x0002    # Earth-like
 SETTING_EDSM    = 0x1000
@@ -80,23 +80,19 @@ def _config_get_int(key, default=0):
                 return default
 
 
-def _locale_num(value, dp=None):
+def _locale_num(value, dp=0):
     """
     EDMC 6.x uses Locale.string_from_number().
     Some older environments used stringFromNumber(). Keep both if possible.
     """
     try:
-        if dp is None:
-            return Locale.string_from_number(value)
         return Locale.string_from_number(value, dp)
     except Exception:
         try:
-            if dp is None:
-                return Locale.stringFromNumber(value)
             return Locale.stringFromNumber(value, dp)
         except Exception:
             # Last resort: plain str
-            return str(value)
+            return str(int(round(value)))
 
 
 # -----------------------------
