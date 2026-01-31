@@ -1,280 +1,348 @@
 # -*- coding: utf-8 -*-
-# HabZone (EDMC 6.x) – slim, same features:
-# UI + k/M + tooltips + Recalc + persistence + auto-restore via journal + optional verbose logging
+#
+# Display the "habitable-zone" (i.e. the range of distances in which you might find an Earth-Like World)
+#
 
-import glob, json, logging, os, sys
-import tkinter as tk
+from __future__ import print_function
 
+from collections import defaultdict
+import requests
+import sys
+import threading
+
+try:
+    # Python 2
+    from urllib2 import quote
+    import Tkinter as tk
+except ModuleNotFoundError:
+    # Python 3
+    from urllib.parse import quote
+    import tkinter as tk
+
+from ttkHyperlinkLabel import HyperlinkLabel
 import myNotebook as nb
+
+# Only used when running non-optimized Python (default for EDMC)
+if __debug__:
+    from traceback import print_exc
+
 from config import config
 from l10n import Locale
 
-VERSION = "1.22-edmc6-slim"
+# Bump: EDMC 6.x / Python 3.x compatibility
+VERSION = '1.21-edmc6'
 
-LOG = logging.getLogger("HabZone")
+SETTING_DEFAULT = 0x0002    # Earth-like
+SETTING_EDSM    = 0x1000
+SETTING_NONE    = 0xffff
 
-CFG_ABBREV = "habzone_abbrev"
-CFG_DEBUG  = "habzone_debug"
-CFG_LAST_SYSTEM = "habzone_last_system"
-CFG_LAST_R      = "habzone_last_star_r"
-CFG_LAST_T      = "habzone_last_star_t"
-
-LS = 300000000.0
-# (name, inner_temp(K) or 0, outer_temp(K))
 WORLDS = [
-    ("Metal-Rich",      0.0, 1103.0),
-    ("Earth-Like",    278.0,  227.0),
-    ("Water",         307.0,  156.0),
-    ("Ammonia",       193.0,  117.0),
-    ("Terraformable", 315.0,  223.0),
+    # Type            Black-body temp range     EDSM description
+    ('Metal-Rich',      0,      1103.0,         'Metal-rich body'),
+    ('Earth-Like',    278.0,     227.0,         'Earth-like world'),
+    ('Water',         307.0,     156.0,         'Water world'),
+    ('Ammonia',       193.0,     117.0,         'Ammonia world'),
+    ('Terraformable', 315.0,     223.0,         'terraformable'),
 ]
 
-this = sys.modules[__name__]
+LS = 300000000.0  # 1 ls in m (approx)
+
+this = sys.modules[__name__]  # For holding module globals
 this.frame = None
-this.rows = []  # list of dicts: {"label","near","dash","far","unit"}
-this.abbrev = True
-this.last_system = ""
-this.last_r = None
-this.last_t = None
-this.cur_system = ""
-this.restored = False
+this.worlds = []
+this.edsm_session = None
+this.edsm_data = None
+
+# Used during preferences
+this.settings = None
+this.edsm_setting = None
 
 
-# ----------------- config / logging -----------------
-def cfg(key, default=""):
+# -----------------------------
+# Compatibility helpers
+# -----------------------------
+def _config_get_int(key, default=0):
+    """
+    EDMC 6.x uses config.get_int(). Older plugins sometimes used getint().
+    Keep this plugin compatible with both if possible.
+    """
     try:
-        v = config.get(key)
-        return default if v in (None, "") else v
+        return config.get_int(key)
     except Exception:
-        return default
-
-def cfgb(key, default=False):
-    try:
-        return bool(int(cfg(key, "1" if default else "0")))
-    except Exception:
-        return default
-
-def cfgf(key):
-    try:
-        return float(cfg(key, ""))
-    except Exception:
-        return None
-
-def cfg_set(key, value):
-    config.set(key, str(value))
-
-def setup_logging():
-    # default quiet: WARNING. verbose: INFO
-    LOG.setLevel(logging.INFO if cfgb(CFG_DEBUG, False) else logging.WARNING)
-
-# ----------------- persistence -----------------
-def load_persist():
-    this.last_system = cfg(CFG_LAST_SYSTEM, "")
-    this.last_r = cfgf(CFG_LAST_R)
-    this.last_t = cfgf(CFG_LAST_T)
-
-def save_persist(system, r, t):
-    system = system or ""
-    cfg_set(CFG_LAST_SYSTEM, system)
-    cfg_set(CFG_LAST_R, float(r))
-    cfg_set(CFG_LAST_T, float(t))
-    this.last_system, this.last_r, this.last_t = system, float(r), float(t)
-
-# ----------------- journal parse (startup system) -----------------
-def journal_dir():
-    jd = cfg("journaldir", "")
-    if jd and os.path.isdir(jd):
-        return jd
-    return os.path.join(os.path.expanduser("~"), "Saved Games", "Frontier Developments", "Elite Dangerous")
-
-def system_from_journal():
-    jd = journal_dir()
-    files = sorted(glob.glob(os.path.join(jd, "Journal.*.log")), key=os.path.getmtime, reverse=True)
-    if not files:
-        return ""
-    path = files[0]
-    try:
-        # last ~5000 lines is enough and still fast
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            tail = f.readlines()[-5000:]
-        for line in reversed(tail):
+        try:
+            # Older EDMC / compatibility
+            return config.getint(key)
+        except Exception:
             try:
-                e = json.loads(line)
+                v = config.get(key)
+                return int(v) if v is not None else default
             except Exception:
-                continue
-            if e.get("event") in ("Location", "FSDJump"):
-                return e.get("StarSystem", "") or ""
+                return default
+
+
+def _locale_num(value, dp=None):
+    """
+    EDMC 6.x uses Locale.string_from_number().
+    Some older environments used stringFromNumber(). Keep both if possible.
+    """
+    try:
+        if dp is None:
+            return Locale.string_from_number(value)
+        return Locale.string_from_number(value, dp)
     except Exception:
-        LOG.exception("journal parse failed")
-    return ""
+        try:
+            if dp is None:
+                return Locale.stringFromNumber(value)
+            return Locale.stringFromNumber(value, dp)
+        except Exception:
+            # Last resort: plain str
+            return str(value)
 
-# ----------------- ui helpers -----------------
-def fmt_ls(v):
-    v = int(v)
-    if this.abbrev and v >= 10_000:
-        if v >= 1_000_000:
-            return Locale.string_from_number(v / 1_000_000, 2) + "M"
-        return Locale.string_from_number(v / 1_000, 1) + "k"
-    return Locale.string_from_number(v, 0)
 
-class Tip:
-    def __init__(self, w, get_text):
-        self.w, self.get_text, self.top = w, get_text, None
-        w.bind("<Enter>", self.show, add="+")
-        w.bind("<Leave>", self.hide, add="+")
-        w.bind("<Motion>", self.move, add="+")
+# -----------------------------
+# EDMC plugin entry points
+# -----------------------------
+def plugin_start3(plugin_dir):
+    return plugin_start()
 
-    def show(self, *_):
-        if self.top:
-            return
-        txt = self.get_text() or ""
-        if not txt:
-            return
-        self.top = tk.Toplevel(self.w)
-        self.top.wm_overrideredirect(True)
-        tk.Label(self.top, text=txt, relief="solid", borderwidth=1,
-                 font=("TkDefaultFont", 9), padx=6, pady=3).pack()
-        self.move()
-
-    def move(self, *_):
-        if not self.top:
-            return
-        x = self.w.winfo_pointerx() + 12
-        y = self.w.winfo_pointery() + 12
-        self.top.wm_geometry(f"+{x}+{y}")
-
-    def hide(self, *_):
-        if self.top:
-            self.top.destroy()
-            self.top = None
-
-# ----------------- math / compute -----------------
-def dfort(r, t, target):
-    # distance in ls
-    return (((r*r) * (t**4) / (4 * (target**4))) ** 0.5) / LS
-
-def compute(r, t):
-    r = float(r); t = float(t)
-    for i, (name, hi, lo) in enumerate(WORLDS):
-        row = this.rows[i]
-        far = int(dfort(r, t, lo) + 0.5)
-        rad = int(r / LS + 0.5)
-
-        row["near"]._tt = row["far"]._tt = ""
-        if far <= rad:
-            row["near"]["text"] = ""
-            row["dash"]["text"] = "×"
-            row["far"]["text"]  = ""
-            row["unit"]["text"] = ""
-            continue
-
-        near = rad if hi <= 0 else int(dfort(r, t, hi) + 0.5)
-        row["near"]["text"] = fmt_ls(near)
-        row["dash"]["text"] = "–"
-        row["far"]["text"]  = fmt_ls(far)
-        row["unit"]["text"] = "ls"
-
-        row["near"]._tt = "Exakt: %s ls" % Locale.string_from_number(near, 0)
-        row["far"]._tt  = "Exakt: %s ls" % Locale.string_from_number(far, 0)
-
-# ----------------- restore -----------------
-def restore_if_possible():
-    if this.restored:
-        return
-    if this.cur_system and this.cur_system == this.last_system and this.last_r and this.last_t:
-        compute(this.last_r, this.last_t)
-        this.restored = True
-
-def schedule_restore():
-    if not this.frame:
-        return
-    for ms in (250, 1000, 2500):
-        this.frame.after(ms, restore_if_possible)
-
-def recalc():
-    if this.last_r and this.last_t:
-        compute(this.last_r, this.last_t)
-
-# ----------------- EDMC entry points -----------------
-def plugin_start3(_): return "HabZone"
-def plugin_start(): return "HabZone"
+def plugin_start():
+    # App isn't initialised at this point so can't do anything interesting
+    return 'HabZone'
 
 def plugin_app(parent):
+    # Create and display widgets
     this.frame = tk.Frame(parent)
+    this.frame.columnconfigure(3, weight=1)
+    this.frame.bind('<<HabZoneData>>', edsm_data)  # callback when EDSM data received
 
-    setup_logging()
-    load_persist()
-    this.abbrev = cfgb(CFG_ABBREV, True)
+    for (name, high, low, subType) in WORLDS:
+        this.worlds.append((
+            tk.Label(this.frame, text=name + ':'),
+            HyperlinkLabel(this.frame, wraplength=100),  # edsm
+            tk.Label(this.frame),                        # near
+            tk.Label(this.frame),                        # dash
+            tk.Label(this.frame),                        # far
+            tk.Label(this.frame),                        # ls
+        ))
 
-    this.cur_system = system_from_journal()
-
-    # stable columns
-    this.frame.grid_columnconfigure(0, minsize=115)
-    this.frame.grid_columnconfigure(2, minsize=70)
-    this.frame.grid_columnconfigure(3, minsize=18)
-    this.frame.grid_columnconfigure(4, minsize=70)
-    this.frame.grid_columnconfigure(5, minsize=18)
-
-    tk.Button(this.frame, text="Recalc", command=recalc).grid(row=0, column=0, sticky=tk.W, padx=(0, 8), pady=(0, 4))
-
-    font = ("TkDefaultFont", 9)
-    for idx, (name, _hi, _lo) in enumerate(WORLDS, start=1):
-        lbl  = tk.Label(this.frame, text=name + ":", anchor="w", font=font)
-        near = tk.Label(this.frame, text="", anchor="e", font=font)
-        dash = tk.Label(this.frame, text="", anchor="center", font=font)
-        far  = tk.Label(this.frame, text="", anchor="e", font=font)
-        unit = tk.Label(this.frame, text="", anchor="w", font=font)
-
-        lbl.grid(row=idx, column=0, sticky=tk.W, padx=(0, 8))
-        near.grid(row=idx, column=2, sticky=tk.E, padx=(0, 6))
-        dash.grid(row=idx, column=3, sticky=tk.E, padx=(0, 6))
-        far.grid(row=idx, column=4, sticky=tk.E, padx=(0, 6))
-        unit.grid(row=idx, column=5, sticky=tk.W)
-
-        near._tt = far._tt = ""
-        Tip(near, lambda w=near: getattr(w, "_tt", ""))
-        Tip(far,  lambda w=far:  getattr(w, "_tt", ""))
-
-        this.rows.append({"label": lbl, "near": near, "dash": dash, "far": far, "unit": unit})
-
-    schedule_restore()
+    this.spacer = tk.Frame(this.frame)  # Main frame can't be empty or it doesn't resize
+    update_visibility()
     return this.frame
 
-def plugin_prefs(parent, *_):
-    f = nb.Frame(parent)
+def plugin_prefs(parent, cmdr, is_beta):
+    frame = nb.Frame(parent)
+    nb.Label(frame, text='Display:').grid(row=0, padx=10, pady=(10, 0), sticky=tk.W)
 
-    this._abbrev_var = tk.IntVar(value=1 if cfgb(CFG_ABBREV, True) else 0)
-    nb.Checkbutton(f, text="Abbreviate large distances (k/M)", variable=this._abbrev_var).grid(padx=10, pady=(10, 2), sticky=tk.W)
+    setting = get_setting()
+    this.settings = []
+    row = 1
+    for (name, high, low, subType) in WORLDS:
+        var = tk.IntVar(value=(setting & row) and 1)
+        nb.Checkbutton(frame, text=name, variable=var).grid(row=row, padx=10, pady=2, sticky=tk.W)
+        this.settings.append(var)
+        row *= 2
 
-    this._debug_var = tk.IntVar(value=1 if cfgb(CFG_DEBUG, False) else 0)
-    nb.Checkbutton(f, text="Verbose logging (for troubleshooting)", variable=this._debug_var).grid(padx=10, pady=2, sticky=tk.W)
+    nb.Label(frame, text='Elite Dangerous Star Map:').grid(padx=10, pady=(10, 0), sticky=tk.W)
+    this.edsm_setting = tk.IntVar(value=(setting & SETTING_EDSM) and 1)
+    nb.Checkbutton(
+        frame,
+        text='Look up system in EDSM database',
+        variable=this.edsm_setting
+    ).grid(padx=10, pady=2, sticky=tk.W)
 
-    nb.Label(f, text="Version %s" % VERSION).grid(padx=10, pady=(10, 10), sticky=tk.W)
-    return f
+    nb.Label(frame, text='Version %s' % VERSION).grid(padx=10, pady=10, sticky=tk.W)
+    return frame
 
-def prefs_changed(*_):
-    cfg_set(CFG_ABBREV, "1" if this._abbrev_var.get() else "0")
-    cfg_set(CFG_DEBUG,  "1" if this._debug_var.get() else "0")
-    this.abbrev = bool(this._abbrev_var.get())
-    setup_logging()
-    # apply immediately
-    restore_if_possible()
-    recalc()
+def prefs_changed(cmdr, is_beta):
+    row = 1
+    setting = 0
+    for var in this.settings:
+        setting += var.get() and row
+        row *= 2
+
+    setting += this.edsm_setting.get() and SETTING_EDSM
+    config.set('habzone', setting or SETTING_NONE)
+
+    this.settings = None
+    this.edsm_setting = None
+    update_visibility()
+
 
 def journal_entry(cmdr, is_beta, system, station, entry, state):
-    ev = entry.get("event")
-    if ev == "Scan":
+    if entry.get('event') == 'Scan':
         try:
-            if float(entry.get("DistanceFromArrivalLS", 0.0)) == 0.0:
-                r = float(entry["Radius"]); t = float(entry["SurfaceTemperature"])
-                sysname = entry.get("StarSystem") or system or ""
-                save_persist(sysname, r, t)
-                compute(r, t)
+            # Only calculate for arrival star
+            if not float(entry.get('DistanceFromArrivalLS', 0.0)):
+                r = float(entry['Radius'])
+                t = float(entry['SurfaceTemperature'])
+
+                for i in range(len(WORLDS)):
+                    (name, high, low, subType) = WORLDS[i]
+                    (label, edsm, near, dash, far, ls) = this.worlds[i]
+
+                    far_dist = int(0.5 + dfort(r, t, low))
+                    radius = int(0.5 + r / LS)
+
+                    if far_dist <= radius:
+                        near['text'] = ''
+                        dash['text'] = u'×'
+                        far['text'] = ''
+                        ls['text'] = ''
+                    else:
+                        if not high:
+                            near['text'] = _locale_num(radius)
+                        else:
+                            near['text'] = _locale_num(int(0.5 + dfort(r, t, high)))
+                        dash['text'] = '-'
+                        far['text'] = _locale_num(far_dist)
+                        ls['text'] = 'ls'
+
         except Exception:
-            LOG.exception("scan handling failed")
-    elif ev in ("Location", "FSDJump"):
-        sysname = entry.get("StarSystem") or system or ""
-        if sysname:
-            this.cur_system = sysname
-        if ev == "FSDJump":
-            this.restored = False
+            if __debug__:
+                print_exc()
+            for (label, edsm, near, dash, far, ls) in this.worlds:
+                near['text'] = ''
+                dash['text'] = ''
+                far['text'] = ''
+                ls['text'] = '?'
+
+    elif entry.get('event') == 'FSDJump':
+        for (label, edsm, near, dash, far, ls) in this.worlds:
+            edsm['text'] = ''
+            edsm['url'] = ''
+            near['text'] = ''
+            dash['text'] = ''
+            far['text'] = ''
+            ls['text'] = ''
+
+    if entry.get('event') in ['Location', 'FSDJump'] and (get_setting() & SETTING_EDSM):
+        system_name = entry.get('StarSystem')
+        if system_name:
+            thread = threading.Thread(target=edsm_worker, name='EDSM worker', args=(system_name,))
+            thread.daemon = True
+            thread.start()
+
+
+def cmdr_data(data, is_beta):
+    # Manual Update
+    try:
+        if (get_setting() & SETTING_EDSM) and not data['commander']['docked']:
+            system_name = data['lastSystem']['name']
+            thread = threading.Thread(target=edsm_worker, name='EDSM worker', args=(system_name,))
+            thread.daemon = True
+            thread.start()
+    except Exception:
+        if __debug__:
+            print_exc()
+
+
+# Distance for target black-body temperature
+# From Jackie Silver's Hab-Zone Calculator https://forums.frontier.co.uk/showthread.php?p=5452081
+def dfort(r, t, target):
+    return (((r ** 2) * (t ** 4) / (4 * (target ** 4))) ** 0.5) / LS
+
+
+# EDSM lookup
+def edsm_worker(systemName):
+    if not this.edsm_session:
+        this.edsm_session = requests.Session()
+
+    try:
+        r = this.edsm_session.get(
+            'https://www.edsm.net/api-system-v1/bodies?systemName=%s' % quote(systemName),
+            timeout=10
+        )
+        r.raise_for_status()
+        this.edsm_data = r.json() or {}  # Unknown system represented as empty list
+    except Exception:
+        if __debug__:
+            print_exc()
+        this.edsm_data = None
+
+    # Tk is not thread-safe, so can't access widgets in this thread.
+    # event_generate() is the only safe way to poke the main thread from this thread.
+    if this.frame is not None:
+        this.frame.event_generate('<<HabZoneData>>', when='tail')
+
+
+# EDSM data received
+def edsm_data(event):
+    if this.edsm_data is None:
+        # error
+        for (label, edsm, near, dash, far, ls) in this.worlds:
+            edsm['text'] = '?'
+            edsm['url'] = None
+        return
+
+    # Collate
+    bodies = defaultdict(list)
+    for body in this.edsm_data.get('bodies', []):
+        if body.get('terraformingState') == 'Candidate for terraforming':
+            bodies['terraformable'].append(body['name'])
+        else:
+            bodies[body.get('subType', '')].append(body.get('name', ''))
+
+    # Display
+    systemName = this.edsm_data.get('name', '')
+    url = 'https://www.edsm.net/show-system?systemName=%s&bodyName=ALL' % quote(systemName)
+
+    for i in range(len(WORLDS)):
+        (name, high, low, subType) = WORLDS[i]
+        (label, edsm, near, dash, far, ls) = this.worlds[i]
+
+        # Make names compact in-list (strip system prefix + spaces)
+        names = []
+        for x in bodies.get(subType, []):
+            if not x:
+                continue
+            if systemName and x.startswith(systemName):
+                names.append(x[len(systemName):].replace(' ', ''))
+            else:
+                names.append(x)
+
+        edsm['text'] = ' '.join(names)
+
+        if len(bodies.get(subType, [])) == 1:
+            edsm['url'] = 'https://www.edsm.net/show-system?systemName=%s&bodyName=%s' % (
+                quote(systemName),
+                quote(bodies[subType][0])
+            )
+        else:
+            edsm['url'] = url
+
+
+def get_setting():
+    setting = _config_get_int('habzone', default=0)
+
+    if setting == 0:
+        return SETTING_DEFAULT  # Default to Earth-Like
+    elif setting == SETTING_NONE:
+        return 0  # Explicitly set by the user to display nothing
+    else:
+        return setting
+
+
+def update_visibility():
+    setting = get_setting()
+    row = 1
+    for (label, edsm, near, dash, far, ls) in this.worlds:
+        if setting & row:
+            label.grid(row=row, column=0, sticky=tk.W)
+            edsm.grid(row=row, column=1, sticky=tk.W, padx=(0, 10))
+            near.grid(row=row, column=2, sticky=tk.E)
+            dash.grid(row=row, column=3, sticky=tk.E)
+            far.grid(row=row, column=4, sticky=tk.E)
+            ls.grid(row=row, column=5, sticky=tk.W)
+        else:
+            label.grid_remove()
+            edsm.grid_remove()
+            near.grid_remove()
+            dash.grid_remove()
+            far.grid_remove()
+            ls.grid_remove()
+        row *= 2
+
+    if setting:
+        this.spacer.grid_remove()
+    else:
+        this.spacer.grid(row=0)
