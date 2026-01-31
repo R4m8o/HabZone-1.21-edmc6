@@ -1,43 +1,67 @@
 📦 HabZone – EDMC 6.x Compatibility Update
 
-Version: 1.20-edmc6
+Version: 1.22-edmc6
 Status: Stable
 Tested with: EDMarketConnector 6.1.1, Python 3.13
 
-🔧 Changes
+🧭 HabZone – Changelog
+v1.20-edmc6-slim
 
-Updated Config API for EDMC 6.x
+EDMC 6.x compatible – refactored & streamlined release
 
-config.getint() → config.get_int()
+✨ New
 
-Updated Locale API
+Automatic restore after EDMC restart
+Habitable Zone distances are now restored automatically after restarting EDMC, without requiring a system jump.
 
-Locale.stringFromNumber() → Locale.string_from_number()
+Journal-based startup detection
+The plugin determines the current system on startup by parsing the latest Elite Dangerous journal file, ensuring reliable restore behavior.
 
-Fixed silent failures during Scan events
+Optional verbose logging
+Added a preference to enable detailed logging for troubleshooting (disabled by default).
 
-Added safe debug logging (print_exc() in debug mode)
+🔧 Improved
 
-Improved robustness for missing journal fields
+Slimmed-down codebase
+Significant refactor to reduce complexity and maintenance overhead while preserving full functionality.
 
-No functional behavior changes to HabZone calculations
+Modernized EDMC 6.x focus
+Removed legacy Python 2 compatibility and unused imports to align fully with EDMC 6.x.
 
-✅ Result
+Cleaner internal state handling
+Simplified persistence and restore logic for better robustness and readability.
 
-Plugin loads cleanly in EDMC 6.x
+UI formatting polish
 
-Habitable Zone distances display correctly after scanning the arrival star
+Consistent default font usage
 
-Fully compatible with modern Python 3.x builds
+Optional k / M abbreviation for large distances
 
-ℹ️ Notes
+Tooltips show exact distances on hover
 
-This update is a maintenance / compatibility fix only
+Stable column widths to prevent UI jitter
 
-Original functionality and UI layout are unchanged
+🛠 Fixed
 
-Safe drop-in replacement for the original HabZone-master/load.py
+Missing data after EDMC restart
+Distances are now shown immediately after restart when remaining in the same system.
 
+Silent restore failures
+Restore logic is now deterministic and easier to debug when verbose logging is enabled.
+
+🧹 Removed
+
+Legacy Python 2 fallback code
+
+Unused imports and dead code paths
+
+Redundant configuration helpers and state variables
+
+⚠️ Notes
+
+This version is intended for EDMC 6.x and Python 3 only.
+
+Users upgrading from older HabZone versions should remove or disable previous plugin folders to avoid conflicts.
 ----- Original - by Marginal -----
 
 # Habitable Zone plugin for [EDMC](https://github.com/Marginal/EDMarketConnector/wiki)
