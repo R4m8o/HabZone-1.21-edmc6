@@ -2,11 +2,16 @@
 
 This plugin helps explorers find high-value planets. It displays the "habitable-zone" (i.e. the range of distances in which you might find an Earth-Like World) when you scan the primary star in a system with a [Detailed Surface Scanner](http://elite-dangerous.wikia.com/wiki/Detailed_Surface_Scanner).
 
-Version: 1.22-edmc6
+Version: 1.23-edmc6
 Status: Stable
 Tested with: EDMarketConnector 6.1.1, Python 3.13
 
 # New
+v1.23
+- Auto-rescan on EDMC startup (Journal restore + optional EDSM refresh)
+- manual "Rescan" button
+
+v1.22
 - remove decimals in distance display
 - optional k/M abbreviation for large distances (toggle in prefs)
 - tooltip shows exact distance when abbreviation is enabled
