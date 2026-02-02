@@ -6,6 +6,11 @@ Version: 1.22-edmc6
 Status: Stable
 Tested with: EDMarketConnector 6.1.1, Python 3.13
 
+# New
+- remove decimals in distance display
+- optional k/M abbreviation for large distances (toggle in prefs)
+- tooltip shows exact distance when abbreviation is enabled
+
 ## Installation
 
 * On EDMC's Plugins settings tab press the “Open” button. This reveals the `plugins` folder where EDMC looks for plugins.
