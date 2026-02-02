@@ -9,7 +9,7 @@ Tested with: EDMarketConnector 6.1.1, Python 3.13
 ## Installation
 
 * On EDMC's Plugins settings tab press the “Open” button. This reveals the `plugins` folder where EDMC looks for plugins.
-* Download the [latest release](https://github.com/R4m8o/HabZone-1.21-edmc6/releases/latest).
+* Download the [latest release](https://github.com/R4m8o/HabZone-edmc6/releases/latest).
 * Open the `.zip` archive that you downloaded and move the `HabZone` folder contained inside into the `plugins` folder.
 
 You will need to re-start EDMC for it to notice the new plugin.
